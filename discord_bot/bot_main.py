@@ -47,6 +47,20 @@ class RedditBot(discord.Client):
         chance = 0.7 if not message.author.bot else 0.15
         if random.random() < chance:
             async with message.channel.typing():
+                prompt = f"System: {self.personality}\nUser said: {message.content}\nReply as a toxic Redditor (max 15 words)."
+                try:
+
+                    response = self.model.generate_content(prompt)
+                    await asyncio.sleep(random.uniform(2, 4))
+                    
+                    if response and response.text:
+                        await message.reply(content=response.text, tts=True)
+                    else:
+                        print(f"Empty response from Gemini for {self.user.name}")
+                except Exception as e:
+                    print(f"Error for {self.user.name}: {e}")
+                    
+            async with message.channel.typing():
                 prompt = f"System: {self.personality}\nUser said: {message.content}\nReply as a toxic Reditor (max 15 words)."
                 try:
                     response = self.model.generate_content(prompt)
