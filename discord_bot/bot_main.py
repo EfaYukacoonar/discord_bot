@@ -1,47 +1,72 @@
 import discord
 import asyncio
 import os
-import sqlite3
 import random
-import datetime
+from flask import Flask
+from threading import Thread
 import google.generativeai as genai
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-TOKENS = [os.getenv(f"TOKEN_{i}") for i in range(1, 5)]
+app = Flask('')
+@app.route('/')
+def home(): return "I'm alive!"
+def run(): app.run(host='0.0.0.0', port=8080)
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+BOT_CONFIGS = [
+    {"token": os.getenv("TOKEN_1"), "key": os.getenv("GEMINI_KEY_1"), "idx": 0},
+    {"token": os.getenv("TOKEN_2"), "key": os.getenv("GEMINI_KEY_2"), "idx": 1},
+    {"token": os.getenv("TOKEN_3"), "key": os.getenv("GEMINI_KEY_3"), "idx": 2},
+    {"token": os.getenv("TOKEN_4"), "key": os.getenv("GEMINI_KEY_4"), "idx": 3},
+]
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 PERSONALITIES = [
-    "You are a degenerate from Reddit's r/wallstreetbets. Talk about stocks, crypto, and 'to the moon'. Use slang like 'HODL', 'Apes', 'Loss porn'. Be aggressive, use 💀, and never give financial advice. Keep it short.",
-    "You are a typical r/technology user. Be a cynical, 'actually...' type of person. Demand sources, talk about privacy/AI, and look down on everyone else. Use nerd emojis like 🤓 occasionally.",
-    "You are an r/cringe regular. Your job is to find everything second-hand embarrassing. Use 'yikes', 'bruh', 'down bad', or 'touch grass'. Keep it cold and use 🤡.",
-    "You are an r/gaming sweat. Everyone is a 'noob' with a 'skill issue'. Use 'L', 'Ratio', 'GG'. Talk in gaming metaphors. Very toxic but funny. Use 'kek' or 'lmao'."
+    "r/wallstreetbets degen. Aggressive, loves 'Stonks', uses 💀. Short, toxic.",
+    "r/technology nerd. Pretentious, 'actually...' attitude, asks for sources. 🤓",
+    "r/cringe user. Cold, judgmental, uses 'yikes', 'bruh'. 🤡",
+    "r/gaming sweat. Everyone is a 'noob'. Uses 'L', 'Ratio', 'Skill issue'."
 ]
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash-latest')
-
 class RedditBot(discord.Client):
-    def __init__(self, token, p_idx, *args, **kwargs):
+    def __init__(self, token, api_key, p_idx, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.token = token
         self.personality = PERSONALITIES[p_idx]
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
+
+    async def on_ready(self):
+        print(f"Logged in: {self.user.name} with its own API Key.")
 
     async def on_message(self, message):
         if message.channel.id != CHANNEL_ID or message.author == self.user:
             return
 
-        chance = 0.7 if not message.author.bot else 0.15 
+        chance = 0.7 if not message.author.bot else 0.15
         if random.random() < chance:
-           prompt = f"System: {self.personality}\n\nRecent Chat Log:\n{context}\n\nLatest message: {message.content}\n\nReply as your persona in 1 short sentence (max 15 words). No polite AI bullshit."
-            response = model.generate_content(prompt)
-            await asyncio.sleep(random.uniform(2, 5))
-            await message.reply(response.text)
+            async with message.channel.typing():
+                prompt = f"System: {self.personality}\nUser said: {message.content}\nReply as a toxic Reditor (max 15 words)."
+                try:
+                    response = self.model.generate_content(prompt)
+                    await asyncio.sleep(random.uniform(2, 4))
+                    await message.reply(response.text)
+                except Exception as e:
+                    print(f"Error for {self.user.name}: {e}")
 
-async def main():
+async def start_bots():
     intents = discord.Intents.default()
     intents.message_content = True
-    bots = [RedditBot(tk, i, intents=intents) for i, tk in enumerate(TOKENS)]
-    await asyncio.gather(*[bot.start(bot.token) for bot in bots])
+
+    tasks = []
+    for config in BOT_CONFIGS:
+        if config["token"] and config["key"]:
+            bot = RedditBot(config["token"], config["key"], config["idx"], intents=intents)
+            tasks.append(bot.start(bot.token))
+    
+    await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    keep_alive() 
+    asyncio.run(start_bots())
